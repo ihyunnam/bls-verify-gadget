@@ -2,6 +2,7 @@ use ark_crypto_primitives::signature::constraints::SigVerifyGadget;
 use ark_ec::bls12::{Bls12, Bls12Config};
 use ark_ec::hashing::curve_maps::wb::WBConfig;
 use ark_ec::pairing::Pairing;
+use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_r1cs_std::groups::bls12;
 use ark_r1cs_std::prelude::PairingVar as PG;
 use ark_r1cs_std::{bits::uint8::UInt8, prelude::*};
@@ -191,6 +192,27 @@ where
     }
 }
 
+// impl<P: Bls12Config> AllocVar<Parameters<P>, ConstraintF<P>> for ParametersVar<P>
+// where
+//     for<'a> &'a G1Var<P>: GroupOpsBounds<'a, <Bls12<P> as Pairing>::G1, G1Var<P>>,
+// {
+//     fn new_variable<T: Borrow<Parameters<P>>>(
+//         cs: impl Into<Namespace<ConstraintF<P>>>,
+//         f: impl FnOnce() -> Result<T, SynthesisError>,
+//         mode: AllocationMode,
+//     ) -> Result<Self, SynthesisError> {
+//         let value = &f()
+//             .map(|b| b.borrow().g1_generator)  // modify the potential Ok value
+//             .unwrap_or(ark_ec::short_weierstrass::Projective::<<P>::G1Config>::default());  // returns provided Ok val or default
+//             let cs = cs.into();
+//             let generator: ark_r1cs_std::groups::curves::short_weierstrass::ProjectiveVar<<P as Bls12Config>::G1Config, ark_r1cs_std::fields::fp::FpVar<<P as Bls12Config>::Fp>> = <ark_r1cs_std::groups::curves::short_weierstrass::ProjectiveVar<P::G1Config, ark_r1cs_std::fields::fp::FpVar<P::Fp>>>::new_variable(cs.clone(), || Ok(value), mode)?;
+//             Ok(Self {
+//                 g1_generator: generator,
+//             })
+//     }
+// }
+
+// MODIFIED BY ME TO ALLOW NONE
 impl<P: Bls12Config> AllocVar<Parameters<P>, ConstraintF<P>> for ParametersVar<P>
 where
     for<'a> &'a G1Var<P>: GroupOpsBounds<'a, <Bls12<P> as Pairing>::G1, G1Var<P>>,
@@ -200,13 +222,12 @@ where
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
     ) -> Result<Self, SynthesisError> {
-        f().and_then(|val| {
-            let cs = cs.into();
-            let generator =
-                G1Var::<P>::new_variable(cs.clone(), || Ok(val.borrow().g1_generator), mode)?;
-            Ok(Self {
-                g1_generator: generator,
-            })
+        let generator = f().map(|b| b.borrow().g1_generator).unwrap_or(ark_ec::short_weierstrass::Projective::<<P>::G1Config>::default());
+        let ns = cs.into();
+        let cs = ns.cs();
+        let generator_var = G1Var::<P>::new_variable(cs.clone(), || Ok(generator), mode)?;
+        Ok(Self {
+            g1_generator: generator_var,
         })
     }
 }
@@ -520,3 +541,4 @@ mod test {
         assert_eq!(result.value().unwrap(), false);
     }
 }
+
